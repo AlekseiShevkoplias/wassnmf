@@ -60,7 +60,43 @@ def test_julia_notebook_analog():
     assert np.allclose(D.sum(axis=0), 1.0, atol=1e-4)
     assert np.allclose(Lambda.sum(axis=0), 1.0, atol=1e-4)
     
-    # Create plot matching Julia's style
+    # Create matrix visualizations
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    
+    # Original Data Matrix
+    im0 = axs[0, 0].imshow(X, aspect='auto', cmap='viridis')
+    axs[0, 0].set_title("Original Data Matrix X")
+    axs[0, 0].set_xlabel("Samples")
+    axs[0, 0].set_ylabel("Features")
+    plt.colorbar(im0, ax=axs[0, 0])
+    
+    # Dictionary Matrix
+    im1 = axs[0, 1].imshow(D, aspect='auto', cmap='viridis')
+    axs[0, 1].set_title("Dictionary Matrix D")
+    axs[0, 1].set_xlabel("Components")
+    axs[0, 1].set_ylabel("Features")
+    plt.colorbar(im1, ax=axs[0, 1])
+    
+    # Weight Matrix
+    im2 = axs[1, 0].imshow(Lambda, aspect='auto', cmap='viridis')
+    axs[1, 0].set_title("Weight Matrix Λ")
+    axs[1, 0].set_xlabel("Samples")
+    axs[1, 0].set_ylabel("Components")
+    plt.colorbar(im2, ax=axs[1, 0])
+    
+    # Reconstructed Data Matrix
+    reconstructed_X = D @ Lambda
+    im3 = axs[1, 1].imshow(reconstructed_X, aspect='auto', cmap='viridis')
+    axs[1, 1].set_title("Reconstructed Data Matrix DΛ")
+    axs[1, 1].set_xlabel("Samples")
+    axs[1, 1].set_ylabel("Features")
+    plt.colorbar(im3, ax=axs[1, 1])
+    
+    plt.tight_layout()
+    plt.savefig('matrix_visualizations.png')
+    plt.close()
+    
+    # Create component plot matching Julia's style
     plt.figure(figsize=(10, 6))
     for i in range(D.shape[1]):
         plt.plot(coord, D[:, i], label=f"Component {i+1}")
@@ -69,7 +105,7 @@ def test_julia_notebook_analog():
     plt.ylabel("Magnitude")
     plt.legend()
     plt.grid(True)
-    plt.savefig('example_test.png')
+    plt.savefig('components_plot.png')
     plt.close()
 
 if __name__ == "__main__":
