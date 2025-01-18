@@ -812,6 +812,7 @@ weakdeps = ["MathOptInterface"]
 [[deps.OptimalTransport]]
 deps = ["ExactOptimalTransport", "IterativeSolvers", "LinearAlgebra", "LogExpFunctions", "NNlib", "Reexport"]
 git-tree-sha1 = "79ba1dab46dfc7b677278ebe892a431788da86a9"
+pinned = true
 uuid = "7e02d93a-ae51-4f58-b602-d97af76e3b33"
 version = "0.3.19"
 
