@@ -1,4 +1,3 @@
-
 module JuWassNMF
 # from https://juliaoptimaltransport.github.io/OptimalTransport.jl/dev/examples/nmf
     using OptimalTransport
@@ -14,6 +13,7 @@ module JuWassNMF
     using Base.Iterators
     using NMF
     using Optim
+    using LineSearches
 
     export wasserstein_nmf
 
@@ -74,54 +74,39 @@ module JuWassNMF
         )
         return getprimal_dict(Λ, Optim.minimizer(opt), ρ2)
     end;
-
-    function wasserstein_nmf(X::Matrix{Float64}, k::Int; 
-                            eps::Float64=0.025,
-                            rho1::Float64=5e-2, 
-                            rho2::Float64=5e-2,
-                            n_iter::Int=10,
-                            verbose::Bool=true)
-        # Compute the cost matrix and its kernel
-        # We use feature indices as coordinates for pairwise distances
-        coord = 1:size(X,1)
-        C = pairwise(SqEuclidean(), coord)
-        C = C / mean(C)
-        K = exp.(-C / eps)
-        
-        # Initialize dictionary and weights matrices
-        # Both are normalized on their columns (dims=1)
+    function wasserstein_nmf(
+        X::Matrix{Float64}, 
+        K::Matrix{Float64},  # The kernel matrix
+        k::Int; 
+        eps::Float64=0.025,
+        rho1::Float64=0.05,
+        rho2::Float64=0.05,
+        n_iter::Int=10,
+        verbose::Bool=true
+    )
         D = rand(size(X, 1), k)
         simplex_norm!(D; dims=1)
         Λ = rand(k, size(X, 2))
         simplex_norm!(Λ; dims=1)
-        
-        # Set up optimization options
+    
         opt_options = Optim.Options(
             iterations=250,
             g_tol=1e-4,
             show_trace=false,
-            show_every=10
+            show_every=10,
+
         )
-        
-        # Main alternating optimization loop
+    
         for iter in 1:n_iter
             verbose && @info "Wasserstein-NMF: iteration $iter"
-            
-            # Update dictionary D while keeping weights Λ fixed
-            D .= solve_dict(
-                X, K, eps, Λ, rho2;
-                alg=LBFGS(),
-                options=opt_options
-            )
-            
-            # Update weights Λ while keeping dictionary D fixed
-            Λ .= solve_weights(
-                X, K, eps, D, rho1;
-                alg=LBFGS(),
-                options=opt_options
-            )
+            D .= solve_dict(X, K, eps, Λ, rho2; alg=LBFGS(
+                # linesearch = BackTracking(order=2)
+                ), options=opt_options)
+            Λ .= solve_weights(X, K, eps, D, rho1; alg=LBFGS(
+                # linesearch = BackTracking(order=2)
+                ), options=opt_options)
         end
-        
+    
         return D, Λ
     end
 end

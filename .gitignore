@@ -86,4 +86,8 @@ dist/
 # Virtual environment
 .venv/
 
+# Data
 *.out
+*.csv
+*.png
+*.txt
