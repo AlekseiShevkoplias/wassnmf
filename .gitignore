@@ -2,7 +2,8 @@
 *.jl.*.cov
 *.jl.cov
 *.jl.mem
-/Manifest.toml
+# /Manifest.toml 
+# Actually we might need the Manifest on dev
 deps/deps.jl
 docs/build/
 docs/site/
@@ -71,3 +72,18 @@ coverage.xml
 htmlcov/
 .tox/
 .pytest_cache/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Distribution
+dist/
+*.egg-info/
+
+# Virtual environment
+.venv/
+
+*.out
