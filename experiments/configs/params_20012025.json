@@ -1,0 +1,42 @@
+{
+    "experiment_name": "wassnmf_study_20012025",
+    "max_runtime_hours": 7.0,
+    "params": {
+        "n_components": [2, 3, 4, 5],
+        "epsilon": [0.01, 0.025, 0.05, 0.1, 0.2],
+        "rho1": [0.01, 0.05, 0.1, 0.2],
+        "rho2": [0.01, 0.05, 0.1, 0.2],
+        "n_iter": [10, 20, 30, 50]
+    },
+    "scenarios": [
+        {
+            "name": "gaussian_mixture",
+            "n_features": 100,
+            "n_samples": 100,
+            "desc": "Three Gaussian components (Julia notebook analog)"
+        },
+        {
+            "name": "sparse_peaks",
+            "n_features": 200,
+            "n_samples": 150,
+            "desc": "Sparse data with distinct peaks"
+        },
+        {
+            "name": "smooth_continuous",
+            "n_features": 150,
+            "n_samples": 120,
+            "desc": "Smoothly varying sinusoidal components"
+        },
+        {
+            "name": "noisy_gaussian",
+            "n_features": 100,
+            "n_samples": 100,
+            "desc": "Gaussian mixture with added noise"
+        }
+    ],
+    "system": {
+        "check_interval_seconds": 300,
+        "max_memory_percent": 90.0,
+        "base_output_dir": "wassnmf_experiments"
+    }
+}
