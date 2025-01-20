@@ -1,39 +1,67 @@
 # experiments/scripts/run_experiments_20012025.py
-import json
-import sys
 from pathlib import Path
+import subprocess
+import sys
+import time
+import signal
 import logging
 
-# Add project root to path
-repo_root = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(repo_root))
-
-from experiments.runners.experiment_guardian import ExperimentGuardian
-
-def main():
-    # Load configuration
-    config_path = repo_root / "experiments/configs/params_20012025.json"
-    with open(config_path) as f:
-        config = json.load(f)
-    
-    # Set up logging
+def run_experiments():
+    # Setup logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    logger = logging.getLogger(__name__)
-    logger.info(f"Starting experiments with config: {config['experiment_name']}")
-    
-    # Initialize and run guardian
-    guardian = ExperimentGuardian(
-        max_runtime_hours=config['max_runtime_hours'],
-        check_interval_seconds=config['system']['check_interval_seconds'],
-        max_memory_percent=config['system']['max_memory_percent'],
-        base_dir=config['system']['base_output_dir']
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler('supervisor.log'),
+            logging.StreamHandler()
+        ]
     )
     
-    # Run experiments
-    guardian.run()
+    # Get paths
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    runner_script = repo_root / "experiments/runners/experiment_runner.py"
+    
+    try:
+        logging.info("Starting experiments")
+        
+        # Run the experiment runner
+        process = subprocess.Popen(
+            [sys.executable, str(runner_script)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True
+        )
+        
+        # Monitor output in real time
+        while True:
+            output = process.stdout.readline()
+            if output:
+                print(output.strip())
+            
+            # Check if process is still running
+            if process.poll() is not None:
+                break
+        
+        # Get any remaining output
+        _, stderr = process.communicate()
+        if stderr:
+            logging.error(f"Errors from experiment: {stderr}")
+        
+        if process.returncode != 0:
+            logging.error(f"Experiment failed with code: {process.returncode}")
+        else:
+            logging.info("Experiments completed successfully")
+            
+    except KeyboardInterrupt:
+        logging.info("Received interrupt, stopping gracefully...")
+        process.terminate()
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+    except Exception as e:
+        logging.error(f"Error running experiments: {str(e)}")
+        raise
 
 if __name__ == "__main__":
-    main()
+    run_experiments()
