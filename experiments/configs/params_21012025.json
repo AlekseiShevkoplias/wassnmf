@@ -1,0 +1,24 @@
+{
+    "experiment_name": "wassnmf_study_21012025",
+    "max_runtime_hours": 70.0,
+    "params": {
+        "n_components": [2, 3, 4, 5],
+        "epsilon": [0.01, 0.025, 0.05],
+        "rho1": [0.01, 0.05, 0.1],
+        "rho2": [0.01, 0.05, 0.1],
+        "n_iter": [50, 100, 500, 1000]
+    },
+    "scenarios": [
+        {
+            "name": "gaussian_mixture",
+            "n_features": 100,
+            "n_samples": 100,
+            "desc": "Three Gaussian components (Julia notebook analog)"
+        }
+     ],
+    "system": {
+        "check_interval_seconds": 300,
+        "max_memory_percent": 90.0,
+        "base_output_dir": "wassnmf_experiments_4"
+    }
+}
