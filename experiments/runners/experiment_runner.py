@@ -15,6 +15,7 @@ from datetime import datetime
 import traceback
 
 from wassnmf.wassnmf import WassersteinNMF
+from wassnmf.utils import compute_entropic_wasserstein_distance
 
 class ExperimentRunner:
     def __init__(self, config_path: str, output_dir: str):
@@ -60,6 +61,7 @@ class ExperimentRunner:
         C = pairwise_distances(coord.reshape(-1, 1), metric="sqeuclidean")
         C /= np.mean(C)
         K = np.exp(-C / 0.025)
+        self.cost_matrix = C
         
         return X, K, coord
 
@@ -112,9 +114,16 @@ class ExperimentRunner:
                         H_standard = nmf.components_
                         std_time = time.time() - t0
                         
+                        reco_wass = D_wass @ Lambda_wass
+                        reco_std = W_standard @ H_standard
+
                         # Compute errors
-                        wass_error = mean_squared_error(X, D_wass @ Lambda_wass)
-                        std_error = mean_squared_error(X, W_standard @ H_standard)
+                        wass_error = mean_squared_error(X, reco_wass)
+                        std_error = mean_squared_error(X, reco_std)
+
+                        wass_ot = compute_entropic_wasserstein_distance(X, reco_wass, self.cost_matrix, reg=0.025)
+                        std_ot  = compute_entropic_wasserstein_distance(X, reco_std,  self.cost_matrix, reg=0.025)
+
                         
                         # Save result
                         result = {
@@ -125,6 +134,8 @@ class ExperimentRunner:
                             **param_dict,
                             'wass_error': wass_error,
                             'std_error': std_error,
+                            'wass_ot': wass_ot,
+                            'std_ot': std_ot,
                             'wass_time': wass_time,
                             'std_time': std_time
                         }
@@ -181,7 +192,7 @@ class ExperimentRunner:
 def main():
     repo_root = Path(__file__).resolve().parent.parent.parent
     config_path = repo_root / "experiments/configs/params_21012025.json"
-    output_dir = Path("wassnmf_experiments_2")
+    output_dir = Path("wassnmf_experiments_3")
     
     runner = ExperimentRunner(config_path=config_path, output_dir=output_dir)
     runner.run()

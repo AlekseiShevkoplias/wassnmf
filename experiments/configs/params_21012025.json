@@ -19,6 +19,6 @@
     "system": {
         "check_interval_seconds": 300,
         "max_memory_percent": 90.0,
-        "base_output_dir": "wassnmf_experiments_3"
+        "base_output_dir": "wassnmf_experiments_4"
     }
 }
