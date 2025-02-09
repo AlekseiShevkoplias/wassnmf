@@ -136,25 +136,25 @@ class ExperimentRunner:
                             index=False
                         )
                         
-                        # Plot comparison
-                        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+                        # # Plot comparison
+                        # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
                         
-                        for i in range(D_wass.shape[1]):
-                            ax1.plot(coord, D_wass[:, i], label=f"Component {i+1}")
-                        ax1.set_title(f"WassNMF (error: {wass_error:.4f})")
-                        ax1.set_xlabel("Coordinate")
-                        ax1.legend()
+                        # for i in range(D_wass.shape[1]):
+                        #     ax1.plot(coord, D_wass[:, i], label=f"Component {i+1}")
+                        # ax1.set_title(f"WassNMF (error: {wass_error:.4f})")
+                        # ax1.set_xlabel("Coordinate")
+                        # ax1.legend()
                         
-                        for i in range(W_standard.shape[1]):
-                            ax2.plot(coord, W_standard[:, i], label=f"Component {i+1}")
-                        ax2.set_title(f"Standard NMF (error: {std_error:.4f})")
-                        ax2.set_xlabel("Coordinate")
-                        ax2.legend()
+                        # for i in range(W_standard.shape[1]):
+                        #     ax2.plot(coord, W_standard[:, i], label=f"Component {i+1}")
+                        # ax2.set_title(f"Standard NMF (error: {std_error:.4f})")
+                        # ax2.set_xlabel("Coordinate")
+                        # ax2.legend()
                         
-                        plt.savefig(
-                            self.figures_dir / f"comparison_{scenario['name']}_{experiment_count}.png"
-                        )
-                        plt.close()
+                        # plt.savefig(
+                        #     self.figures_dir / f"comparison_{scenario['name']}_{experiment_count}.png"
+                        # )
+                        # plt.close()
                         
                         logging.info(f"Experiment {experiment_count} completed successfully")
                         logging.info(f"WassNMF error: {wass_error:.6f}, time: {wass_time:.2f}s")
@@ -180,8 +180,8 @@ class ExperimentRunner:
 
 def main():
     repo_root = Path(__file__).resolve().parent.parent.parent
-    config_path = repo_root / "experiments/configs/params_20012025.json"
-    output_dir = Path("wassnmf_experiments")
+    config_path = repo_root / "experiments/configs/params_21012025.json"
+    output_dir = Path("wassnmf_experiments_2")
     
     runner = ExperimentRunner(config_path=config_path, output_dir=output_dir)
     runner.run()
