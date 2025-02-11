@@ -1,5 +1,7 @@
 import numpy as np
-import ot  # from the "pot" library
+import ot 
+from sklearn.metrics import pairwise_distances
+
 
 def compute_entropic_wasserstein_distance(X, X_hat, cost_matrix, reg=0.025):
     """
