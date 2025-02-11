@@ -191,7 +191,7 @@ class ExperimentRunner:
 
 def main():
     repo_root = Path(__file__).resolve().parent.parent.parent
-    config_path = repo_root / "experiments/configs/params_21012025.json"
+    config_path = repo_root / "experiments/configs/params_20012025.json"
     output_dir = Path("wassnmf_experiments_3")
     
     runner = ExperimentRunner(config_path=config_path, output_dir=output_dir)
