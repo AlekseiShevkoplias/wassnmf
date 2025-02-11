@@ -91,3 +91,4 @@ dist/
 *.csv
 *.png
 *.txt
+data/
