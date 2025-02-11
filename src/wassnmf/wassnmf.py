@@ -1,6 +1,7 @@
 from juliacall import Main as jl
 import numpy as np
-from typing import Tuple
+import torch
+from typing import Tuple, Union, Optional
 from pathlib import Path
 
 
@@ -13,13 +14,30 @@ class WassersteinNMF:
         rho2: float = 0.05,
         n_iter: int = 10,
         verbose: bool = False,
+        device: Optional[Union[str, torch.device]] = None,
     ):
+        """
+        Initialize WassersteinNMF with optional GPU support.
+        
+        Args:
+            n_components: Number of components for the decomposition
+            epsilon: Entropic regularization parameter
+            rho1: First proximal term weight
+            rho2: Second proximal term weight
+            n_iter: Number of iterations
+            verbose: Whether to print progress
+            device: PyTorch device to use ('cpu', 'cuda', or torch.device)
+        """
         self.n_components = n_components
         self.epsilon = epsilon
         self.rho1 = rho1
         self.rho2 = rho2
         self.n_iter = n_iter
         self.verbose = verbose
+        
+        # Handle device setup
+        self.device = torch.device('cpu') if device is None else torch.device(device)
+        self.use_gpu = self.device.type == 'cuda'
 
         # Initialize Julia environment
         julia_pkg_path = Path(__file__).parent.parent.parent / "JuWassNMF"
@@ -34,6 +52,7 @@ class WassersteinNMF:
                 using LinearAlgebra
                 using Distances
                 using PythonCall
+                using CUDA
                 
                 # Initialize global variables
                 global py_input_X = nothing
@@ -47,60 +66,116 @@ class WassersteinNMF:
         except Exception as e:
             raise ImportError(f"Failed to initialize Julia environment: {str(e)}") from e
 
-    def _validate_input(self, X: np.ndarray, K: np.ndarray) -> None:
-        """Basic input validation"""
-        if X.ndim != 2:
-            raise ValueError(f"Expected X to be 2D, got {X.ndim}D")
-        if np.any(X < 0):
-            raise ValueError("Input matrix X contains negative values")
-        if K.shape != (X.shape[0], X.shape[0]):
-            raise ValueError(f"Kernel K shape {K.shape} must match ({X.shape[0]}, {X.shape[0]})")
+    def _validate_input(self, X: Union[np.ndarray, torch.Tensor], 
+                       K: Union[np.ndarray, torch.Tensor]) -> None:
+        """Validate input tensors/arrays"""
+        if isinstance(X, torch.Tensor):
+            if X.dim() != 2:
+                raise ValueError(f"Expected X to be 2D, got {X.dim()}D")
+            if torch.any(X < 0):
+                raise ValueError("Input tensor X contains negative values")
+        else:
+            if X.ndim != 2:
+                raise ValueError(f"Expected X to be 2D, got {X.ndim}D")
+            if np.any(X < 0):
+                raise ValueError("Input matrix X contains negative values")
+            
+        # Check K dimensions
+        K_shape = K.shape if isinstance(K, np.ndarray) else tuple(K.size())
+        X_shape = X.shape if isinstance(X, np.ndarray) else tuple(X.size())
+        if K_shape != (X_shape[0], X_shape[0]):
+            raise ValueError(f"Kernel K shape {K_shape} must match ({X_shape[0]}, {X_shape[0]})")
 
-    def fit_transform(self, X: np.ndarray, K: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def _to_numpy(self, x: Union[np.ndarray, torch.Tensor]) -> np.ndarray:
+        """Convert input to numpy array"""
+        if isinstance(x, torch.Tensor):
+            return x.cpu().numpy()
+        return np.asarray(x)
+
+    def _to_torch(self, x: np.ndarray) -> torch.Tensor:
+        """Convert numpy array to torch tensor on the correct device"""
+        return torch.from_numpy(x).to(self.device)
+
+    def fit_transform(self, X: Union[np.ndarray, torch.Tensor], 
+                     K: Union[np.ndarray, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Decompose input matrix X into dictionary (D) and weight (Lambda) matrices.
+        
+        Args:
+            X: Input matrix (numpy array or PyTorch tensor)
+            K: Kernel matrix (numpy array or PyTorch tensor)
+            
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: Dictionary matrix D and weight matrix Lambda
         """
-        # Basic input validation
-        X = np.asarray(X, dtype=np.float64)
-        K = np.asarray(K, dtype=np.float64)
+        # Input validation
         self._validate_input(X, K)
-
+        
+        # Convert to numpy arrays
+        X_np = self._to_numpy(X)
+        K_np = self._to_numpy(K)
+        
         try:
-            # First, assign the numpy arrays to Julia global variables
-            jl.py_input_X = X
-            jl.py_input_K = K
+            # Assign numpy arrays to Julia global variables
+            jl.py_input_X = X_np
+            jl.py_input_K = K_np
 
-            # Now process the arrays and run optimization
-            jl.seval("""
-                # Convert Python arrays to Julia matrices
-                X = convert(Matrix{Float64}, py_input_X)
-                K = convert(Matrix{Float64}, py_input_K)
-                
-                # Normalize X
-                X ./= sum(X, dims=1)
-                
-                # Run optimization with provided parameters
-                global D, Λ = wasserstein_nmf(
-                    X, K, $n_components;
-                    eps=$epsilon,
-                    rho1=$rho1,
-                    rho2=$rho2,
-                    n_iter=$n_iter,
-                    verbose=$verbose
-                )
-            """.replace("$n_components", str(self.n_components))
-               .replace("$epsilon", str(self.epsilon))
-               .replace("$rho1", str(self.rho1))
-               .replace("$rho2", str(self.rho2))
-               .replace("$n_iter", str(self.n_iter))
-               .replace("$verbose", str(self.verbose).lower()))
+            # Process arrays and run optimization
+            if self.use_gpu:
+                jl.seval("""
+                    # Convert Python arrays to Julia matrices
+                    X = convert(Matrix{Float64}, py_input_X)
+                    K = convert(Matrix{Float64}, py_input_K)
+                    
+                    # Normalize X
+                    X ./= sum(X, dims=1)
+                    
+                    # Run GPU optimization
+                    global D, Λ = wasserstein_nmf_gpu(
+                        X, K, $n_components;
+                        eps=$epsilon,
+                        rho1=$rho1,
+                        rho2=$rho2,
+                        n_iter=$n_iter,
+                        verbose=$verbose
+                    )
+                """.replace("$n_components", str(self.n_components))
+                   .replace("$epsilon", str(self.epsilon))
+                   .replace("$rho1", str(self.rho1))
+                   .replace("$rho2", str(self.rho2))
+                   .replace("$n_iter", str(self.n_iter))
+                   .replace("$verbose", str(self.verbose).lower()))
+            else:
+                jl.seval("""
+                    # Convert Python arrays to Julia matrices
+                    X = convert(Matrix{Float64}, py_input_X)
+                    K = convert(Matrix{Float64}, py_input_K)
+                    
+                    # Normalize X
+                    X ./= sum(X, dims=1)
+                    
+                    # Run CPU optimization
+                    global D, Λ = wasserstein_nmf(
+                        X, K, $n_components;
+                        eps=$epsilon,
+                        rho1=$rho1,
+                        rho2=$rho2,
+                        n_iter=$n_iter,
+                        verbose=$verbose
+                    )
+                """.replace("$n_components", str(self.n_components))
+                   .replace("$epsilon", str(self.epsilon))
+                   .replace("$rho1", str(self.rho1))
+                   .replace("$rho2", str(self.rho2))
+                   .replace("$n_iter", str(self.n_iter))
+                   .replace("$verbose", str(self.verbose).lower()))
 
-            # Convert results back to numpy
-            D = np.array(jl.D)
-            Lambda = np.array(jl.Λ)
+            # Convert results to PyTorch tensors
+            D = self._to_torch(np.array(jl.D))
+            Lambda = self._to_torch(np.array(jl.Λ))
 
             # Final validation
-            if not np.all(np.isfinite(D)) or not np.all(np.isfinite(Lambda)):
+            if not torch.all(torch.isfinite(D)) or not torch.all(torch.isfinite(Lambda)):
                 raise RuntimeError("Optimization produced non-finite values")
 
             return D, Lambda
