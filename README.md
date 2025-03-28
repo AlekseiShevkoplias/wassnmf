@@ -17,7 +17,7 @@ A Python wrapper for Wasserstein NMF implementation in Julia.
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone <repository-url>](https://github.com/AlekseiShevkoplias/wassnmf
    cd wassnmf
    ```
 
