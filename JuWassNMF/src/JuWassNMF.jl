@@ -11,20 +11,9 @@ module JuWassNMF
     using NMF
     using Optim
     using LineSearches
-    using CUDA
-    
-    export wasserstein_nmf, wasserstein_nmf_gpu
+    using Random  # Add this for RNG control
 
-    # Helper function to move data to GPU if needed
-    function to_device(x, use_gpu::Bool)
-# from https://juliaoptimaltransport.github.io/OptimalTransport.jl/dev/examples/nmf
-        return use_gpu ? CuArray(x) : x
-    end
-
-    # Helper function to move data back to CPU
-    function to_cpu(x)
-        return x isa CuArray ? Array(x) : x
-    end
+    export wasserstein_nmf
 
     function simplex_norm!(x; dims=1)
         return x .= x ./ sum(x; dims=dims)
@@ -62,22 +51,22 @@ module JuWassNMF
         return NNlib.softmax(-G * Λ' / ρ2; dims=1)
     end
 
-    function solve_weights(X, K, ε, D, ρ1; alg, options, use_gpu=false)
+    function solve_weights(X, K, ε, D, ρ1; alg, options)
         opt = optimize(
-            g -> dual_obj_weights(X, K, ε, D, to_cpu(g), ρ1),
-            (∇, g) -> dual_obj_weights_grad!(∇, X, K, ε, D, to_cpu(g), ρ1),
-            to_device(zero.(X), use_gpu),
+            g -> dual_obj_weights(X, K, ε, D, g, ρ1),
+            (∇, g) -> dual_obj_weights_grad!(∇, X, K, ε, D, g, ρ1),
+            zero.(X),
             alg,
             options,
         )
         return getprimal_weights(D, Optim.minimizer(opt), ρ1)
     end
 
-    function solve_dict(X, K, ε, Λ, ρ2; alg, options, use_gpu=false)
+    function solve_dict(X, K, ε, Λ, ρ2; alg, options)
         opt = optimize(
-            g -> dual_obj_dict(X, K, ε, Λ, to_cpu(g), ρ2),
-            (∇, g) -> dual_obj_dict_grad!(∇, X, K, ε, Λ, to_cpu(g), ρ2),
-            to_device(zero.(X), use_gpu),
+            g -> dual_obj_dict(X, K, ε, Λ, g, ρ2),
+            (∇, g) -> dual_obj_dict_grad!(∇, X, K, ε, Λ, g, ρ2),
+            zero.(X),
             alg,
             options,
         )
@@ -85,7 +74,35 @@ module JuWassNMF
     end
 
     """
-    CPU version of Wasserstein NMF
+    CPU version of Wasserstein NMF with seeding for deterministic results
+    
+    Parameters:
+    -----------
+    X : Matrix{Float64}
+        Input data matrix
+    K : Matrix{Float64}
+        Cost matrix
+    k : Int
+        Number of components
+    eps : Float64
+        Entropic regularization parameter (default: 0.025)
+    rho1 : Float64
+        Regularization parameter for weights (default: 0.05)
+    rho2 : Float64
+        Regularization parameter for dictionary (default: 0.05)
+    n_iter : Int
+        Number of iterations (default: 10)
+    verbose : Bool
+        Whether to print progress information (default: true)
+    seed : Union{Int, Nothing}
+        Random seed for reproducible results (default: nothing)
+    
+    Returns:
+    --------
+    D : Matrix{Float64}
+        Dictionary matrix
+    Λ : Matrix{Float64}
+        Weights matrix
     """
     function wasserstein_nmf(
         X::Matrix{Float64}, 
@@ -95,67 +112,35 @@ module JuWassNMF
         rho1::Float64=0.05,
         rho2::Float64=0.05,
         n_iter::Int=10,
-        verbose::Bool=true
+        verbose::Bool=true,
+        seed::Union{Int, Nothing}=1337
     )
-        D = rand(size(X, 1), k)
+        # Set RNG seed if provided
+        if seed !== nothing
+            rng = Random.MersenneTwister(seed)
+        else
+            rng = Random.GLOBAL_RNG
+        end
+        
+        # Initialize D and Λ with seeded randomness
+        D = rand(rng, size(X, 1), k)
         simplex_norm!(D; dims=1)
-        Λ = rand(k, size(X, 2))
+        Λ = rand(rng, k, size(X, 2))
         simplex_norm!(Λ; dims=1)
-    
+
         opt_options = Optim.Options(
             iterations=250,
             g_tol=1e-4,
             show_trace=false,
             show_every=10,
         )
-    
+
         for iter in 1:n_iter
             verbose && @info "Wasserstein-NMF: iteration $iter"
             D .= solve_dict(X, K, eps, Λ, rho2; alg=LBFGS(), options=opt_options)
             Λ .= solve_weights(X, K, eps, D, rho1; alg=LBFGS(), options=opt_options)
         end
-    
-        return D, Λ
-    end
 
-    """
-    GPU version of Wasserstein NMF
-    """
-    function wasserstein_nmf_gpu(
-        X::Matrix{Float64}, 
-        K::Matrix{Float64},
-        k::Int;
-        eps::Float64=0.025,
-        rho1::Float64=0.05,
-        rho2::Float64=0.05,
-        n_iter::Int=10,
-        verbose::Bool=true
-    )
-        # Move data to GPU
-        X_gpu = CuArray(X)
-        K_gpu = CuArray(K)
-        
-        D = CuArray(rand(size(X, 1), k))
-        simplex_norm!(D; dims=1)
-        Λ = CuArray(rand(k, size(X, 2)))
-        simplex_norm!(Λ; dims=1)
-    
-        opt_options = Optim.Options(
-            iterations=250,
-            g_tol=1e-4,
-            show_trace=false,
-            show_every=10,
-        )
-    
-        for iter in 1:n_iter
-            verbose && @info "Wasserstein-NMF (GPU): iteration $iter"
-            D .= solve_dict(X_gpu, K_gpu, eps, Λ, rho2; 
-                          alg=LBFGS(), options=opt_options, use_gpu=true)
-            Λ .= solve_weights(X_gpu, K_gpu, eps, D, rho1; 
-                             alg=LBFGS(), options=opt_options, use_gpu=true)
-        end
-    
-        # Move results back to CPU
-        return Array(D), Array(Λ)
+        return D, Λ
     end
 end

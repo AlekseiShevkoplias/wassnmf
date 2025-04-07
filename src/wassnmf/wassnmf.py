@@ -37,7 +37,7 @@ class WassersteinNMF:
         
         # Handle device setup
         self.device = torch.device('cpu') if device is None else torch.device(device)
-        self.use_gpu = self.device.type == 'cuda'
+        self.use_gpu = False # self.device.type == 'cuda'
 
         # Initialize Julia environment
         julia_pkg_path = Path(__file__).parent.parent.parent / "JuWassNMF"
@@ -52,7 +52,7 @@ class WassersteinNMF:
                 using LinearAlgebra
                 using Distances
                 using PythonCall
-                using CUDA
+                # using CUDA
                 
                 # Initialize global variables
                 global py_input_X = nothing
