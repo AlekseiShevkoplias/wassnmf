@@ -121,7 +121,8 @@ module JuWassNMF
         else
             rng = Random.GLOBAL_RNG
         end
-        
+        verbose && @info "Starting WassNMF calculation..."
+
         # Initialize D and Λ with seeded randomness
         D = rand(rng, size(X, 1), k)
         simplex_norm!(D; dims=1)
