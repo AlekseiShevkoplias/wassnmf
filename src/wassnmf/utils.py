@@ -1,5 +1,52 @@
 import numpy as np
 import ot
+import torch
+
+def tensor_to_npy(tensor, save_path):
+    numpy_array = tensor.detach().cpu().numpy()
+
+    np.save(save_path, numpy_array)
+
+    print(f"Tensor saved as NumPy array to {save_path}")
+    return numpy_array
+
+def downsample_grid(X, original_size=50, target_size=10, method="mean"):
+    """
+    Downsample a grid of size original_size x original_size to target_size x target_size
+    using either mean or max pooling.
+
+    Parameters
+    ----------
+    X : ndarray of shape (original_size * original_size, n_samples)
+        Input data to downsample. Each column is a sample represented as a flattened grid.
+    original_size : int
+        Original size of the grid (assumed to be square).
+    target_size : int
+        Target size of the downsampled grid (assumed to be square).
+    method : str
+        Pooling method, either 'mean' or 'max'.
+
+    Returns
+    -------
+    X_downsampled : ndarray of shape (target_size * target_size, n_samples)
+        Downsampled data.
+    """
+    assert original_size % target_size == 0, "Target size must evenly divide original size"
+    factor = original_size // target_size
+
+    n_samples = X.shape[1]
+    X_downsampled = np.zeros((target_size * target_size, n_samples))
+
+    for idx in range(n_samples):
+        grid = X[:, idx].reshape(original_size, original_size)
+        pooled = np.zeros((target_size, target_size))
+        for i in range(target_size):
+            for j in range(target_size):
+                patch = grid[i*factor:(i+1)*factor, j*factor:(j+1)*factor]
+                pooled[i, j] = patch.mean() if method == "mean" else patch.max()
+        X_downsampled[:, idx] = pooled.flatten()
+
+    return X_downsampled
 
 
 def compute_entropic_wasserstein_distance(X, X_hat, cost_matrix, reg=0.025):

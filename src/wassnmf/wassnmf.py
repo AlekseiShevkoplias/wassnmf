@@ -16,7 +16,7 @@ class WassersteinNMF:
         rho2: float = 0.05,
         n_iter: int = 10,
         verbose: bool = False,
-        device: Optional[Union[str, torch.device]] = None,
+        device: Optional[Union[str, torch.device]] = 'cpu',
         use_gpu: bool = False
     ):
         """
@@ -63,7 +63,6 @@ class WassersteinNMF:
                 using LinearAlgebra
                 using Distances
                 using PythonCall
-                # using CUDA
                 
                 # Initialize global variables
                 global py_input_X = nothing
@@ -123,97 +122,57 @@ class WassersteinNMF:
         self.logger.info("Converting numpy array to torch tensor")
         return torch.from_numpy(x).to(self.device)
 
-    def fit_transform(
-        self, X_np: Union[np.ndarray], K_np: Union[np.ndarray, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Decompose input matrix X into dictionary (D) and weight (Lambda) matrices.
+def fit_transform(
+    self, 
+    X_np: Union[np.ndarray], 
+    K_np: Union[np.ndarray, torch.Tensor], 
+    D_init: Optional[np.ndarray] = None, 
+    Lambda_init: Optional[np.ndarray] = None
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Decompose input matrix X into dictionary (D) and weight (Lambda) matrices.
 
-        Args:
-            X_np: Input matrix (numpy array)
-            K_np: Kernel matrix (numpy array)
+    Args:
+        X_np: Input matrix (numpy array)
+        K_np: Kernel matrix (numpy array)
+        D_init: Precomputed dictionary matrix (optional)
+        Lambda_init: Precomputed weight matrix (optional)
 
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: Dictionary matrix D and weight matrix Lambda
-        """
-        # Input validation
-        self.logger.info("Validating input...")
-        self._validate_input(X_np, X_np)
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Dictionary matrix D and weight matrix Lambda
+    """
+    self.logger.info("Validating input...")
+    self._validate_input(X_np, K_np)
 
-        try:
-            # Assign numpy arrays to Julia global variables
-            self.logger.info("Moving X and K to Julia...")
-            jl.py_input_X = X_np
-            jl.py_input_K = K_np
+    try:
+        self.logger.info("Moving X, K, and initial values to Julia...")
+        jl.py_input_X = X_np
+        jl.py_input_K = K_np
 
-            # Process arrays and run optimization
-            if self.use_gpu:
-                self.logger.info("Starting the Julia GPU execution...")
-                jl.seval(
-                    """
-                    # Convert Python arrays to Julia matrices
-                    X = convert(Matrix{Float64}, py_input_X)
-                    K = convert(Matrix{Float64}, py_input_K)
-                    
-                    # Normalize X
-                    X ./= sum(X, dims=1)
-                    
-                    # Run GPU optimization
-                    global D, Λ = wasserstein_nmf_gpu(
-                        X, K, $n_components;
-                        eps=$epsilon,
-                        rho1=$rho1,
-                        rho2=$rho2,
-                        n_iter=$n_iter,
-                        verbose=$verbose
-                    )
-                """.replace("$n_components", str(self.n_components))
-                    .replace("$epsilon", str(self.epsilon))
-                    .replace("$rho1", str(self.rho1))
-                    .replace("$rho2", str(self.rho2))
-                    .replace("$n_iter", str(self.n_iter))
-                    .replace("$verbose", str(self.verbose).lower())
-                )
-            else:
-                self.logger.info("Starting the Julia CPU execution...")
-                jl.seval(
-                    """
-                    # Convert Python arrays to Julia matrices
-                    X = convert(Matrix{Float64}, py_input_X)
-                    K = convert(Matrix{Float64}, py_input_K)
+        if D_init is not None and Lambda_init is not None:
+            jl.D_init = D_init
+            jl.Lambda_init = Lambda_init
+        else:
+            jl.D_init = None
+            jl.Lambda_init = None
 
-                    # Moved normalization to preprocessing!
+        self.logger.info("Starting the Julia execution...")
+        jl.seval("""
+        D, Λ = JuWassNMF.wasserstein_nmf(
+            py_input_X, py_input_K, $n_components;
+            eps=$epsilon, rho1=$rho1, rho2=$rho2, n_iter=$n_iter,
+            verbose=$verbose, D_init=D_init, Λ_init=Lambda_init
+        )
+        """)
 
-                    # Run CPU optimization
-                    global D, Λ = wasserstein_nmf(
-                        X, K, $n_components;
-                        eps=$epsilon,
-                        rho1=$rho1,
-                        rho2=$rho2,
-                        n_iter=$n_iter,
-                        verbose=$verbose
-                    )
-                """.replace("$n_components", str(self.n_components))
-                    .replace("$epsilon", str(self.epsilon))
-                    .replace("$rho1", str(self.rho1))
-                    .replace("$rho2", str(self.rho2))
-                    .replace("$n_iter", str(self.n_iter))
-                    .replace("$verbose", str(self.verbose).lower())
-                )
+        D = self._to_torch(np.array(jl.D))
+        Lambda = self._to_torch(np.array(jl.Λ))
 
-            # Convert results to PyTorch tensors
-            D = self._to_torch(np.array(jl.D))
-            Lambda = self._to_torch(np.array(jl.Λ))
+        if not torch.all(torch.isfinite(D)) or not torch.all(torch.isfinite(Lambda)):
+            raise RuntimeError("Optimization produced non-finite values")
 
-            # Final validation
-            if not torch.all(torch.isfinite(D)) or not torch.all(
-                torch.isfinite(Lambda)
-            ):
-                self.logger.error("Optimization produced non-finite values")
-                raise RuntimeError("Optimization produced non-finite values")
+        return D, Lambda
 
-            return D, Lambda
-
-        except Exception as e:
-            self.logger.error(f"Julia computation failed: {str(e)}")
-            raise RuntimeError(f"Julia computation failed: {str(e)}") from e
+    except Exception as e:
+        self.logger.error(f"Julia computation failed: {str(e)}")
+        raise RuntimeError(f"Julia computation failed: {str(e)}") from e
