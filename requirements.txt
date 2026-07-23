@@ -6,7 +6,7 @@ debugpy==1.8.12
 decorator==5.1.1
 exceptiongroup==1.2.2
 executing==2.1.0
-fonttools==4.55.3
+fonttools==4.60.2
 iniconfig==2.0.0
 ipykernel==6.29.5
 ipython==8.31.0
